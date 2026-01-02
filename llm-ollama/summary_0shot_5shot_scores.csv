@@ -1,8 +1,0 @@
-model,zero_accuracy,five_accuracy,accuracy_impr_pct,zero_spearman,five_spearman,spearman_impr_pct
-deepseek-r1-latest,0.651361,0.670068,2.87,0.547800,0.528861,-3.46
-gemma3-latest,0.610544,0.636054,4.18,0.467352,0.467396,0.01
-granite3.3-latest,0.579932,0.625850,7.92,0.482856,0.486293,0.71
-llama3.1-latest,0.719388,0.647959,-9.93,0.494348,0.315083,-36.26
-ministral-3-latest,0.547619,0.576531,5.28,0.583092,0.616866,5.79
-olmo-3-7b-instruct,0.557823,0.627551,12.50,0.366500,0.414899,13.21
-qwen3-latest,0.659864,0.659864,0.00,0.573345,0.537258,-6.29

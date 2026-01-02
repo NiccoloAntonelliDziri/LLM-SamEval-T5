@@ -10,6 +10,20 @@ from typing import Dict, Optional, Tuple
 class Scores:
 	accuracy: Optional[float]
 	spearman: Optional[float]
+	avg_time: Optional[float] = None
+
+def read_timing_file(timing_path: Path) -> Optional[float]:
+	try:
+		with timing_path.open("r", encoding="utf-8") as f:
+			for line in f:
+				if line.startswith("avg_time_sec:"):
+					return float(line.split(":")[1].strip())
+		return None
+	except FileNotFoundError:
+		return None
+	except Exception as e:
+		print(f"Warning: failed to read {timing_path}: {e}")
+		return None
 
 def read_score_file(score_path: Path) -> Optional[Scores]:
 	try:
@@ -48,6 +62,10 @@ def collect_scores(ollama_dir: Path) -> Dict[str, Dict[str, Scores]]:
 			scores = read_score_file(score_path)
 			if scores is None:
 				continue
+			
+			timing_path = model_dir / "timing.txt"
+			scores.avg_time = read_timing_file(timing_path)
+
 			rec = results.setdefault(model_dir.name, {})
 			rec[split_name] = scores
 
@@ -66,6 +84,8 @@ def write_csv_report(results: Dict[str, Dict[str, Scores]], out_path: Path) -> N
 		"zero_spearman",
 		"five_spearman",
 		"spearman_impr_pct",
+		"zero_avg_time",
+		"five_avg_time",
 	]
 	with out_path.open("w", newline="", encoding="utf-8") as f:
 		writer = csv.writer(f)
@@ -78,6 +98,8 @@ def write_csv_report(results: Dict[str, Dict[str, Scores]], out_path: Path) -> N
 			five_acc = five.accuracy if five else None
 			zero_spr = zero.spearman if zero else None
 			five_spr = five.spearman if five else None
+			zero_time = zero.avg_time if zero else None
+			five_time = five.avg_time if five else None
 
 			acc_impr = pct_improvement(zero_acc, five_acc)
 			spr_impr = pct_improvement(zero_spr, five_spr)
@@ -100,6 +122,8 @@ def write_csv_report(results: Dict[str, Dict[str, Scores]], out_path: Path) -> N
 				fmt(zero_spr),
 				fmt(five_spr),
 				fmt_pct(spr_impr),
+				fmt(zero_time),
+				fmt(five_time),
 			]
 			writer.writerow(row)
 
@@ -114,10 +138,20 @@ def main() -> None:
 		raise SystemExit(f"Directory not found: {ollama_dir}")
 
 	results = collect_scores(ollama_dir)
-	if not results:
-		raise SystemExit("No scores found under llm-ollama/{zero-shot,five-shot}")
+	
+	# Add DeBERTa score
+	deberta_dir = repo_root / "deberta-finetune"
+	deberta_score_path = deberta_dir / "score.json"
+	deberta_scores = read_score_file(deberta_score_path)
+	if deberta_scores:
+		# We'll put it under "zero" split so it appears in the first columns
+		results["deberta-finetune"] = {"zero": deberta_scores}
 
-	out_csv = ollama_dir / "summary_0shot_5shot_scores.csv"
+	if not results:
+		raise SystemExit("No scores found under llm-ollama/{zero-shot,five-shot} or deberta-finetune")
+
+	results_dir = repo_root / "results"
+	out_csv = results_dir / "summary_0shot_5shot_scores.csv"
 	write_csv_report(results, out_csv)
 	print(f"Wrote summary: {out_csv}")
 
