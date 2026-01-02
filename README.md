@@ -17,3 +17,9 @@ A simple overview of the main files and folders in this repository:
 - `score/` — scoring utilities used to evaluate predictions (from https://github.com/Janosch-Gehring/semeval26-05-scripts) 
 - `scripts/` — notebooks for running models and experiments (examples use Ollama and DeBERTa).
 - `requirements.txt` — Python dependencies to install. (in addition to pytorch)
+- `results/` — generated plots and summary CSV files.
+
+## Results
+
+### Metric Consistency
+![Metric Consistency](results/metric_consistency.png)
