@@ -147,6 +147,14 @@ def main() -> None:
 		# We'll put it under "zero" split so it appears in the first columns
 		results["deberta-finetune"] = {"zero": deberta_scores}
 
+	# Add SmolLM scores
+	for size in ["135M", "360M"]:
+		smollm_dir = repo_root / f"smollm-finetune-{size}"
+		smollm_score_path = smollm_dir / "score.json"
+		smollm_scores = read_score_file(smollm_score_path)
+		if smollm_scores:
+			results[f"smollm-{size}"] = {"zero": smollm_scores}
+
 	if not results:
 		raise SystemExit("No scores found under llm-ollama/{zero-shot,five-shot} or deberta-finetune")
 

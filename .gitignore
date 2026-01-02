@@ -2,3 +2,5 @@ env/
 __pycache__/
 deberta-finetune/model/
 deberta-finetune-2/model/
+smollm-finetune-135M/model/
+smollm-finetune-360M/model/

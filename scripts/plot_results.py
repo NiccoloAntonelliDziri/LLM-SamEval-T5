@@ -43,10 +43,25 @@ def plot_accuracy(df: pd.DataFrame, output_dir: Path):
     c_0 = '#a6cee3' # Light Blue
     c_5 = '#1f78b4' # Dark Blue
     c_deberta = '#ff7f00' # Orange for DeBERTa
+    c_smollm_135 = '#FFB74D' # Lighter Orange
+    c_smollm_360 = '#FFB74D' # Same Lighter Orange
 
     # Create color lists
-    colors_0 = [c_deberta if 'deberta' in m else c_0 for m in models]
-    colors_5 = [c_deberta if 'deberta' in m else c_5 for m in models]
+    colors_0 = []
+    colors_5 = []
+    for m in models:
+        if 'deberta' in m:
+            colors_0.append(c_deberta)
+            colors_5.append(c_deberta)
+        elif 'smollm-135M' in m:
+            colors_0.append(c_smollm_135)
+            colors_5.append(c_smollm_135)
+        elif 'smollm-360M' in m:
+            colors_0.append(c_smollm_360)
+            colors_5.append(c_smollm_360)
+        else:
+            colors_0.append(c_0)
+            colors_5.append(c_5)
     
     # Plot 0-shot
     rects1 = ax.barh(x - width/2, plot_df['zero_accuracy'], width, label='0-shot', color=colors_0, alpha=0.9)
@@ -86,10 +101,25 @@ def plot_spearman(df: pd.DataFrame, output_dir: Path):
     c_0 = '#a6cee3' # Light Blue
     c_5 = '#1f78b4' # Dark Blue
     c_deberta = '#ff7f00' # Orange for DeBERTa
+    c_smollm_135 = '#FFB74D' # Lighter Orange
+    c_smollm_360 = '#FFB74D' # Same Lighter Orange
 
     # Create color lists
-    colors_0 = [c_deberta if 'deberta' in m else c_0 for m in models]
-    colors_5 = [c_deberta if 'deberta' in m else c_5 for m in models]
+    colors_0 = []
+    colors_5 = []
+    for m in models:
+        if 'deberta' in m:
+            colors_0.append(c_deberta)
+            colors_5.append(c_deberta)
+        elif 'smollm-135M' in m:
+            colors_0.append(c_smollm_135)
+            colors_5.append(c_smollm_135)
+        elif 'smollm-360M' in m:
+            colors_0.append(c_smollm_360)
+            colors_5.append(c_smollm_360)
+        else:
+            colors_0.append(c_0)
+            colors_5.append(c_5)
     
     # Plot 0-shot
     rects1 = ax.barh(x - width/2, plot_df['zero_spearman'], width, label='0-shot', color=colors_0, alpha=0.9)
@@ -234,13 +264,22 @@ def plot_metric_consistency(df: pd.DataFrame, output_dir: Path):
     c_0 = '#a6cee3' # Light Blue
     c_5 = '#1f78b4' # Dark Blue
     c_deberta = '#ff7f00' # Orange for DeBERTa
+    c_smollm_135 = '#FFB74D' # Lighter Orange
+    c_smollm_360 = '#FFB74D' # Same Lighter Orange
+
+    # Helper to get color
+    def get_color(m, default):
+        if 'deberta' in m: return c_deberta
+        if 'smollm-135M' in m: return c_smollm_135
+        if 'smollm-360M' in m: return c_smollm_360
+        return default
 
     # Plot 0-shot
-    colors_z = [c_deberta if 'deberta' in m else c_0 for m in z_df['model']]
+    colors_z = [get_color(m, c_0) for m in z_df['model']]
     ax.scatter(z_df['accuracy'], z_df['spearman'], color=colors_z, s=120, alpha=0.9, edgecolors='k', label='0-shot', zorder=3)
     
     # Plot 5-shot
-    colors_f = [c_deberta if 'deberta' in m else c_5 for m in f_df['model']]
+    colors_f = [get_color(m, c_5) for m in f_df['model']]
     ax.scatter(f_df['accuracy'], f_df['spearman'], color=colors_f, s=120, alpha=0.9, edgecolors='k', marker='s', label='5-shot', zorder=3)
 
     # Create custom legend to avoid DeBERTa color in 0-shot/5-shot labels
@@ -249,6 +288,8 @@ def plot_metric_consistency(df: pd.DataFrame, output_dir: Path):
         Line2D([0], [0], marker='o', color='w', label='0-shot', markerfacecolor=c_0, markersize=10, markeredgecolor='k'),
         Line2D([0], [0], marker='s', color='w', label='5-shot', markerfacecolor=c_5, markersize=10, markeredgecolor='k'),
         Line2D([0], [0], marker='o', color='w', label='DeBERTa', markerfacecolor=c_deberta, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='o', color='w', label='SmolLM-135M', markerfacecolor=c_smollm_135, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='o', color='w', label='SmolLM-360M', markerfacecolor=c_smollm_360, markersize=10, markeredgecolor='k'),
     ]
     ax.legend(handles=legend_elements)
 
