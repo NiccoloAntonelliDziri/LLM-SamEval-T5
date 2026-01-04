@@ -51,10 +51,12 @@ def pct_improvement(baseline: Optional[float], new: Optional[float]) -> Optional
 def collect_scores(ollama_dir: Path) -> Dict[str, Dict[str, Scores]]:
 	zero_dir = ollama_dir / "zero-shot"
 	five_dir = ollama_dir / "five-shot"
+	zero_deberta_dir = ollama_dir / "zero-shot-deberta"
+	five_deberta_dir = ollama_dir / "five-shot-deberta"
 
 	results: Dict[str, Dict[str, Scores]] = {}
 
-	def load_split(split_dir: Path, split_name: str) -> None:
+	def load_split(split_dir: Path, split_name: str, suffix: str = "") -> None:
 		if not split_dir.exists():
 			return
 		for model_dir in sorted([p for p in split_dir.iterdir() if p.is_dir()]):
@@ -66,11 +68,13 @@ def collect_scores(ollama_dir: Path) -> Dict[str, Dict[str, Scores]]:
 			timing_path = model_dir / "timing.txt"
 			scores.avg_time = read_timing_file(timing_path)
 
-			rec = results.setdefault(model_dir.name, {})
+			rec = results.setdefault(model_dir.name + suffix, {})
 			rec[split_name] = scores
 
 	load_split(zero_dir, "zero")
 	load_split(five_dir, "five")
+	load_split(zero_deberta_dir, "zero", "-deberta")
+	load_split(five_deberta_dir, "five", "-deberta")
 	return results
 
 

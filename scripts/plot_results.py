@@ -27,222 +27,149 @@ def set_style():
         'axes.spines.right': False,
     })
 
-def plot_accuracy(df: pd.DataFrame, output_dir: Path):
-    """Plot Accuracy for all models (Zero-shot and Five-shot)."""
-    cols = ['model', 'zero_accuracy', 'five_accuracy']
-    plot_df = df[cols].copy()
-    plot_df = plot_df.sort_values('zero_accuracy', ascending=True)
+def prepare_grouped_data(df: pd.DataFrame, sort_metric: str):
+    """
+    Prepare data for grouped plotting.
+    Returns a DataFrame where each row is a base model, with columns for:
+    - zero_std, five_std (Standard)
+    - zero_enh, five_enh (Enhanced)
+    """
+    df = df.copy()
+    df['base_name'] = df['model'].apply(lambda x: x.replace('-deberta', ''))
+    df['is_enhanced'] = df['model'].apply(lambda x: '-deberta' in x)
     
-    models = plot_df['model']
+    # Separate standard and enhanced
+    std_df = df[~df['is_enhanced']].set_index('base_name')
+    enh_df = df[df['is_enhanced']].set_index('base_name')
+    
+    # Merge
+    merged = std_df.join(enh_df, lsuffix='_std', rsuffix='_enh', how='outer')
+    
+    # Sort
+    # Prefer sorting by standard zero-shot metric, if available
+    sort_col = f'{sort_metric}_std'
+    if sort_col in merged.columns:
+        merged = merged.sort_values(sort_col, ascending=True)
+    
+    return merged
+
+def plot_grouped_bars(df: pd.DataFrame, metric_prefix: str, title: str, xlabel: str, output_path: Path, show_improvement=False):
+    """Generic function to plot grouped bars for Standard vs Enhanced models."""
+    
+    # Prepare data
+    # metric_prefix is like 'accuracy' or 'spearman' or 'avg_time'
+    # Columns in df will be like 'zero_accuracy_std', 'five_accuracy_enh', etc.
+    
+    grouped_df = prepare_grouped_data(df, f'zero_{metric_prefix}')
+    
+    models = grouped_df.index
     x = np.arange(len(models))
-    width = 0.35
+    width = 0.2
     
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(14, 10))
     
     # Colors
-    c_0 = '#a6cee3' # Light Blue
-    c_5 = '#1f78b4' # Dark Blue
-    c_deberta = '#ff7f00' # Orange for DeBERTa
-    c_smollm_135 = '#FFB74D' # Lighter Orange
-    c_smollm_360 = '#FFB74D' # Same Lighter Orange
+    c_0_std = '#a6cee3' # Light Blue
+    c_5_std = '#1f78b4' # Dark Blue
+    c_0_enh = '#cab2d6' # Light Purple
+    c_5_enh = '#6a3d9a' # Dark Purple
+    c_deberta = '#ff7f00' # Orange
+    c_smollm = '#FFB74D' # Lighter Orange
 
-    # Create color lists
-    colors_0 = []
-    colors_5 = []
-    for m in models:
-        if 'deberta' in m:
-            colors_0.append(c_deberta)
-            colors_5.append(c_deberta)
-        elif 'smollm-135M' in m:
-            colors_0.append(c_smollm_135)
-            colors_5.append(c_smollm_135)
-        elif 'smollm-360M' in m:
-            colors_0.append(c_smollm_360)
-            colors_5.append(c_smollm_360)
-        else:
-            colors_0.append(c_0)
-            colors_5.append(c_5)
+    # Helper to get data safely
+    def get_data(row, col):
+        val = row.get(col)
+        return val if pd.notna(val) else np.nan
+
+    # Plot bars
+    # We have 4 positions: -1.5w, -0.5w, +0.5w, +1.5w
     
-    # Plot 0-shot
-    rects1 = ax.barh(x - width/2, plot_df['zero_accuracy'], width, label='0-shot', color=colors_0, alpha=0.9)
-    
-    # Plot 5-shot
-    rects2 = ax.barh(x + width/2, plot_df['five_accuracy'], width, label='5-shot', color=colors_5, alpha=0.9)
-    
-    # Labels
-    ax.bar_label(rects1, labels=[f'{v:.2f}' if pd.notna(v) else '' for v in plot_df['zero_accuracy']], padding=3, fontsize=10)
-    ax.bar_label(rects2, labels=[f'{v:.2f}' if pd.notna(v) else '' for v in plot_df['five_accuracy']], padding=3, fontsize=10)
-    
+    for i, (model_name, row) in enumerate(grouped_df.iterrows()):
+        # Determine colors for this model
+        # Special cases for DeBERTa base and SmolLM
+        is_deberta_base = model_name == 'deberta-finetune'
+        is_smollm = 'smollm' in model_name
+        
+        # Standard 0-shot
+        v_0_std = get_data(row, f'zero_{metric_prefix}_std')
+        if pd.notna(v_0_std):
+            c = c_deberta if is_deberta_base else (c_smollm if is_smollm else c_0_std)
+            rect = ax.barh(i - 1.5*width, v_0_std, width, color=c, alpha=0.9)
+            ax.bar_label(rect, fmt='%.2f', padding=3, fontsize=8)
+
+        # Standard 5-shot
+        v_5_std = get_data(row, f'five_{metric_prefix}_std')
+        if pd.notna(v_5_std):
+            c = c_deberta if is_deberta_base else (c_smollm if is_smollm else c_5_std)
+            rect = ax.barh(i - 0.5*width, v_5_std, width, color=c, alpha=0.9)
+            ax.bar_label(rect, fmt='%.2f', padding=3, fontsize=8)
+
+        # Enhanced 0-shot
+        v_0_enh = get_data(row, f'zero_{metric_prefix}_enh')
+        if pd.notna(v_0_enh):
+            rect = ax.barh(i + 0.5*width, v_0_enh, width, color=c_0_enh, alpha=0.9)
+            ax.bar_label(rect, fmt='%.2f', padding=3, fontsize=8)
+
+        # Enhanced 5-shot
+        v_5_enh = get_data(row, f'five_{metric_prefix}_enh')
+        if pd.notna(v_5_enh):
+            rect = ax.barh(i + 1.5*width, v_5_enh, width, color=c_5_enh, alpha=0.9)
+            ax.bar_label(rect, fmt='%.2f', padding=3, fontsize=8)
+            
+        # Add improvement annotations if requested
+        if show_improvement:
+            # Standard Improvement
+            if pd.notna(v_0_std) and pd.notna(v_5_std) and v_0_std > 0:
+                impr = (v_5_std - v_0_std) / v_0_std * 100
+                color = '#007000' if impr >= 0 else '#D00000'
+                ax.text(max(v_0_std, v_5_std) + 0.05, i - 1.0*width, f'{impr:+.1f}%', 
+                        va='center', ha='left', fontsize=8, fontweight='bold', color=color)
+            
+            # Enhanced Improvement
+            if pd.notna(v_0_enh) and pd.notna(v_5_enh) and v_0_enh > 0:
+                impr = (v_5_enh - v_0_enh) / v_0_enh * 100
+                color = '#007000' if impr >= 0 else '#D00000'
+                ax.text(max(v_0_enh, v_5_enh) + 0.05, i + 1.0*width, f'{impr:+.1f}%', 
+                        va='center', ha='left', fontsize=8, fontweight='bold', color=color)
+
     ax.set_yticks(x)
     ax.set_yticklabels(models)
-    ax.set_xlabel('Accuracy')
-    ax.set_title('Model Accuracy: 0-shot vs 5-shot')
-    ax.legend(loc='lower right')
+    ax.set_xlabel(xlabel)
+    ax.set_title(title)
+    
+    # Custom Legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=c_0_std, label='0-shot (Standard)'),
+        Patch(facecolor=c_5_std, label='5-shot (Standard)'),
+        Patch(facecolor=c_0_enh, label='0-shot (Enhanced)'),
+        Patch(facecolor=c_5_enh, label='5-shot (Enhanced)'),
+        Patch(facecolor=c_deberta, label='DeBERTa Base'),
+        Patch(facecolor=c_smollm, label='SmolLM'),
+    ]
+    ax.legend(handles=legend_elements, loc='lower right')
+    
     ax.grid(axis='x', linestyle='--', alpha=0.7)
     
     plt.tight_layout()
-    plt.savefig(output_dir / 'accuracy_comparison.png')
+    plt.savefig(output_path)
     plt.close()
-    print(f"Saved accuracy_comparison.png")
+    print(f"Saved {output_path.name}")
+
+def plot_accuracy(df: pd.DataFrame, output_dir: Path):
+    """Plot Accuracy for all models (Grouped)."""
+    plot_grouped_bars(df, 'accuracy', 'Model Accuracy: Standard vs DeBERTa Enhanced', 'Accuracy', output_dir / 'accuracy_comparison.png')
 
 def plot_spearman(df: pd.DataFrame, output_dir: Path):
-    """Plot Spearman correlation for all models (Zero-shot and Five-shot)."""
-    cols = ['model', 'zero_spearman', 'five_spearman']
-    plot_df = df[cols].copy()
-    plot_df = plot_df.sort_values('zero_spearman', ascending=True)
-    
-    models = plot_df['model']
-    x = np.arange(len(models))
-    width = 0.35
-    
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Colors
-    c_0 = '#a6cee3' # Light Blue
-    c_5 = '#1f78b4' # Dark Blue
-    c_deberta = '#ff7f00' # Orange for DeBERTa
-    c_smollm_135 = '#FFB74D' # Lighter Orange
-    c_smollm_360 = '#FFB74D' # Same Lighter Orange
-
-    # Create color lists
-    colors_0 = []
-    colors_5 = []
-    for m in models:
-        if 'deberta' in m:
-            colors_0.append(c_deberta)
-            colors_5.append(c_deberta)
-        elif 'smollm-135M' in m:
-            colors_0.append(c_smollm_135)
-            colors_5.append(c_smollm_135)
-        elif 'smollm-360M' in m:
-            colors_0.append(c_smollm_360)
-            colors_5.append(c_smollm_360)
-        else:
-            colors_0.append(c_0)
-            colors_5.append(c_5)
-    
-    # Plot 0-shot
-    rects1 = ax.barh(x - width/2, plot_df['zero_spearman'], width, label='0-shot', color=colors_0, alpha=0.9)
-    
-    # Plot 5-shot
-    rects2 = ax.barh(x + width/2, plot_df['five_spearman'], width, label='5-shot', color=colors_5, alpha=0.9)
-    
-    # Labels
-    ax.bar_label(rects1, labels=[f'{v:.2f}' if pd.notna(v) else '' for v in plot_df['zero_spearman']], padding=3, fontsize=10)
-    ax.bar_label(rects2, labels=[f'{v:.2f}' if pd.notna(v) else '' for v in plot_df['five_spearman']], padding=3, fontsize=10)
-    
-    ax.set_yticks(x)
-    ax.set_yticklabels(models)
-    ax.set_xlabel('Spearman Correlation')
-    ax.set_title('Model Spearman Correlation: 0-shot vs 5-shot')
-    ax.legend(loc='lower right')
-    ax.grid(axis='x', linestyle='--', alpha=0.7)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'spearman_comparison.png')
-    plt.close()
-    print(f"Saved spearman_comparison.png")
-
-def plot_time(df: pd.DataFrame, output_dir: Path):
-    """Plot average inference time (Zero-shot and Five-shot)."""
-    cols = ['model', 'zero_avg_time', 'five_avg_time']
-    plot_df = df[cols].copy()
-    
-    # Remove models without time data (e.g. DeBERTa)
-    plot_df = plot_df.dropna(subset=['zero_avg_time'])
-    
-    plot_df = plot_df.sort_values('zero_avg_time', ascending=True)
-    
-    if plot_df.empty:
-        print("No time data available to plot.")
-        return
-
-    # Annotate model names
-    annotated_models = []
-    for m in plot_df['model']:
-        name = m
-        if 'think' in m:
-            name += "\n(Thinking Model)"
-        if 'gpt-oss-20b' in m:
-            name += "\n(Colab/Different Hardware)"
-        annotated_models.append(name)
-
-    models = annotated_models
-    x = np.arange(len(models))
-    width = 0.35
-
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Colors
-    c_0 = '#a6cee3' # Light Blue
-    c_5 = '#1f78b4' # Dark Blue
-    
-    # Plot 0-shot
-    rects1 = ax.barh(x - width/2, plot_df['zero_avg_time'], width, label='0-shot', color=c_0, alpha=0.9)
-    
-    # Plot 5-shot
-    rects2 = ax.barh(x + width/2, plot_df['five_avg_time'], width, label='5-shot', color=c_5, alpha=0.9)
-    
-    ax.set_yticks(x)
-    ax.set_yticklabels(models)
-    ax.set_xlabel('Average Time per Sample (seconds)')
-    ax.set_title('Inference Latency: 0-shot vs 5-shot')
-    ax.grid(axis='x', linestyle='--', alpha=0.7)
-    
-    # Add value labels
-    ax.bar_label(rects1, labels=[f'{v:.2f}' if pd.notna(v) else '' for v in plot_df['zero_avg_time']], padding=3, fontsize=10)
-    ax.bar_label(rects2, labels=[f'{v:.2f}' if pd.notna(v) else '' for v in plot_df['five_avg_time']], padding=3, fontsize=10)
-    
-    ax.legend(loc='lower right')
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'inference_time.png')
-    plt.close()
-    print(f"Saved inference_time.png")
+    """Plot Spearman for all models (Grouped)."""
+    plot_grouped_bars(df, 'spearman', 'Model Spearman Correlation: Standard vs DeBERTa Enhanced', 'Spearman Correlation', output_dir / 'spearman_comparison.png')
 
 def plot_improvement(df: pd.DataFrame, output_dir: Path):
-    """Plot 0-shot vs 5-shot comparison for models that have both."""
-    # Filter models that have both 0-shot and 5-shot accuracy
-    plot_df = df.dropna(subset=['zero_accuracy', 'five_accuracy']).copy()
-    
-    if plot_df.empty:
-        print("No models with both 0-shot and 5-shot data found.")
-        return
-        
-    plot_df = plot_df.sort_values('five_accuracy', ascending=True)
-    
-    models = plot_df['model']
-    x = np.arange(len(models))
-    width = 0.35
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Colors
-    c_0 = '#a6cee3' # Light Blue
-    c_5 = '#1f78b4' # Dark Blue
+    """Plot Accuracy with Improvement % annotations."""
+    # This is basically the same as plot_accuracy but with annotations enabled.
+    plot_grouped_bars(df, 'accuracy', 'Few-shot Learning Impact: Standard vs Enhanced', 'Accuracy', output_dir / 'few_shot_improvement.png', show_improvement=True)
 
-    rects1 = ax.bar(x - width/2, plot_df['zero_accuracy'], width, label='0-shot', color=c_0, alpha=0.9)
-    rects2 = ax.bar(x + width/2, plot_df['five_accuracy'], width, label='5-shot', color=c_5, alpha=0.9)
-    
-    ax.set_ylabel('Accuracy')
-    ax.set_title('Few-shot Learning Impact: 0-shot vs 5-shot Accuracy')
-    ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=45, ha='right')
-    ax.legend()
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Add improvement percentage annotation
-    for i, (idx, row) in enumerate(plot_df.iterrows()):
-        impr = row['accuracy_impr_pct']
-        if pd.notna(impr):
-            height = max(row['zero_accuracy'], row['five_accuracy'])
-            color = '#007000' if impr >= 0 else '#D00000' # Stronger Green if positive, Stronger Red if negative
-            ax.text(i, height + 0.02, f'{impr:+.1f}%', ha='center', va='bottom', fontsize=9, fontweight='bold', color=color)
 
-    plt.tight_layout()
-    plt.savefig(output_dir / 'few_shot_improvement.png')
-    plt.close()
-    print(f"Saved few_shot_improvement.png")
 
 def plot_metric_consistency(df: pd.DataFrame, output_dir: Path):
     """Plot Accuracy vs Spearman correlation (Zero-shot and Five-shot) to check consistency."""
@@ -323,6 +250,93 @@ def plot_metric_consistency(df: pd.DataFrame, output_dir: Path):
     plt.close()
     print(f"Saved metric_consistency.png")
 
+def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
+    """Plot Accuracy vs Spearman correlation for ALL models (Standard + DeBERTa Enhanced)."""
+    # Prepare 0-shot data
+    z_df = df[['model', 'zero_accuracy', 'zero_spearman']].dropna().copy()
+    z_df = z_df.rename(columns={'zero_accuracy': 'accuracy', 'zero_spearman': 'spearman'})
+    
+    # Prepare 5-shot data
+    f_df = df[['model', 'five_accuracy', 'five_spearman']].dropna().copy()
+    f_df = f_df.rename(columns={'five_accuracy': 'accuracy', 'five_spearman': 'spearman'})
+    
+    if z_df.empty and f_df.empty:
+        print("No data available for superposed metric consistency plot.")
+        return
+
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # Colors
+    c_0 = '#a6cee3' # Light Blue
+    c_5 = '#1f78b4' # Dark Blue
+    c_deberta = '#ff7f00' # Orange for DeBERTa Base
+    c_0_enhanced = '#cab2d6' # Light Purple
+    c_5_enhanced = '#6a3d9a' # Dark Purple
+    c_smollm_135 = '#FFB74D' # Lighter Orange
+    c_smollm_360 = '#FFB74D' # Same Lighter Orange
+
+    # Helper to get color
+    def get_color(m, shot):
+        if m == 'deberta-finetune':
+            return c_deberta
+        if 'smollm-135M' in m:
+            return c_smollm_135
+        if 'smollm-360M' in m:
+            return c_smollm_360
+        if '-deberta' in m:
+            return c_0_enhanced if shot == 0 else c_5_enhanced
+        return c_0 if shot == 0 else c_5
+
+    # Plot 0-shot
+    colors_z = [get_color(m, 0) for m in z_df['model']]
+    ax.scatter(z_df['accuracy'], z_df['spearman'], color=colors_z, s=100, alpha=0.9, edgecolors='k', label='0-shot', zorder=3)
+    
+    # Plot 5-shot
+    colors_f = [get_color(m, 5) for m in f_df['model']]
+    ax.scatter(f_df['accuracy'], f_df['spearman'], color=colors_f, s=100, alpha=0.9, edgecolors='k', marker='s', label='5-shot', zorder=3)
+    # Connect points for same model
+    common_models = set(z_df['model']).intersection(set(f_df['model']))
+    for model in common_models:
+        z_row = z_df[z_df['model'] == model].iloc[0]
+        f_row = f_df[f_df['model'] == model].iloc[0]
+        
+        # Draw arrow
+        ax.annotate("", 
+                    xy=(f_row['accuracy'], f_row['spearman']), 
+                    xytext=(z_row['accuracy'], z_row['spearman']),
+                    arrowprops=dict(arrowstyle="-|>", mutation_scale=15, color="gray", alpha=0.6, lw=1.5),
+                    zorder=2)
+
+    # Labels - Only label base models to avoid clutter, or label all?
+    # Let's label all but with small font
+    for _, row in z_df.iterrows():
+        label = row['model'].replace('-deberta', '')
+        if '-deberta' in row['model']:
+            label += '*' # Mark enhanced models
+        ax.text(row['accuracy'], row['spearman'], label, fontsize=10, alpha=1)
+
+    ax.set_xlabel('Accuracy')
+    ax.set_ylabel('Spearman Correlation')
+    ax.set_title('Metric Consistency: Standard vs DeBERTa Enhanced Models')
+    
+    # Custom Legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='0-shot (Standard)', markerfacecolor=c_0, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='s', color='w', label='5-shot (Standard)', markerfacecolor=c_5, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='o', color='w', label='0-shot (Enhanced)', markerfacecolor=c_0_enhanced, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='s', color='w', label='5-shot (Enhanced)', markerfacecolor=c_5_enhanced, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='o', color='w', label='DeBERTa Base', markerfacecolor=c_deberta, markersize=10, markeredgecolor='k'),
+    ]
+    ax.legend(handles=legend_elements)
+    
+    ax.grid(True, linestyle='--', alpha=0.8)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'metric_consistency.png')
+    plt.close()
+    print(f"Saved metric_consistency.png")
+
 def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
     """Plot Zero-shot Accuracy vs Accuracy Improvement %."""
     plot_df = df[['model', 'zero_accuracy', 'five_accuracy', 'accuracy_impr_pct']].dropna().copy()
@@ -331,36 +345,65 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
         print("No data available for learning potential plot.")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    # Identify Standard vs Enhanced
+    plot_df['base_name'] = plot_df['model'].apply(lambda x: x.replace('-deberta', ''))
+    plot_df['is_enhanced'] = plot_df['model'].apply(lambda x: '-deberta' in x)
+
+    fig, ax = plt.subplots(figsize=(12, 10))
     
-    # Scatter plot
-    # Color points based on improvement (positive=green, negative=red)
-    colors = []
+    # Colors
+    c_std = '#1f78b4' # Blue (Standard)
+    c_enh = '#6a3d9a' # Purple (Enhanced)
+    c_deberta = '#ff7f00' # Orange (DeBERTa)
+    c_pos = '#55a868' # Green (Positive Improvement)
+    c_neg = '#c44e52' # Red (Negative Improvement)
+    
+    # Plot points and 0->5 arrows
     for idx, row in plot_df.iterrows():
-        if 'deberta' in row['model']:
-            colors.append('#ff7f00') # Orange for DeBERTa
-        elif row['accuracy_impr_pct'] >= 0:
-            colors.append('#55a868') # Green
+        # Determine point color
+        if 'deberta-finetune' in row['model']:
+            color = c_deberta
+        elif row['is_enhanced']:
+            color = c_enh
         else:
-            colors.append('#c44e52') # Red
-    
-    ax.scatter(plot_df['zero_accuracy'], plot_df['accuracy_impr_pct'], c=colors, s=100, alpha=0.8, edgecolors='w', zorder=3)
-    
-    # Draw arrows from 0-shot to 5-shot
-    for i, (idx, row) in enumerate(plot_df.iterrows()):
+            color = c_std
+            
+        # Determine arrow color based on improvement
+        impr = row['accuracy_impr_pct']
+        arrow_color = c_pos if impr >= 0 else c_neg
+        
+        # Plot point
+        ax.scatter(row['zero_accuracy'], row['accuracy_impr_pct'], color=color, s=120, alpha=0.9, edgecolors='w', zorder=3)
+        
+        # Draw arrow from 0-shot to 5-shot (X-axis shift)
         ax.annotate("", 
                     xy=(row['five_accuracy'], row['accuracy_impr_pct']), 
                     xytext=(row['zero_accuracy'], row['accuracy_impr_pct']),
-                    arrowprops=dict(arrowstyle="-|>", color=colors[i], alpha=0.6, lw=1.5),
+                    arrowprops=dict(arrowstyle="-|>", color=arrow_color, alpha=0.6, lw=2),
                     zorder=2)
-    
-    # Add labels
-    texts = []
-    for _, row in plot_df.iterrows():
-        # Offset label slightly up to avoid overlap with arrow/point
-        texts.append(ax.text(row['zero_accuracy'], row['accuracy_impr_pct'] + 0.8, row['model'], fontsize=9, ha='center', va='bottom'))
         
-    # Set x-axis limits to include both zero and five shot scores AND DeBERTa
+        # Label point
+        label = row['model'].replace('-deberta', '')
+        if row['is_enhanced']:
+            label += '*'
+        ax.text(row['zero_accuracy'], row['accuracy_impr_pct'] + 0.8, label, fontsize=9, ha='center', va='bottom', alpha=0.8)
+
+    # Connect Standard to Enhanced (New feature)
+    # Group by base_name
+    for base_name, group in plot_df.groupby('base_name'):
+        if len(group) == 2:
+            # We have both Standard and Enhanced
+            std = group[~group['is_enhanced']].iloc[0]
+            enh = group[group['is_enhanced']].iloc[0]
+            
+            # Draw arrow from Standard to Enhanced
+            ax.annotate("",
+                        xy=(enh['zero_accuracy'], enh['accuracy_impr_pct']),
+                        xytext=(std['zero_accuracy'], std['accuracy_impr_pct']),
+                        arrowprops=dict(arrowstyle="->", color='gray', linestyle='--', alpha=0.5, lw=1.5),
+                        zorder=1)
+
+    # Set x-axis limits
     all_scores = pd.concat([plot_df['zero_accuracy'], plot_df['five_accuracy']])
     
     # Check for DeBERTa to include in limits
@@ -376,20 +419,29 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
 
     ax.set_xlabel('Baseline Performance (Zero-shot Accuracy)')
     ax.set_ylabel('Benefit from Few-shot (Accuracy Improvement %)')
-    ax.set_title('Learning Potential: Baseline vs Improvement')
+    ax.set_title('Learning Potential: Baseline vs Improvement (Accuracy)')
     ax.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.3) # Zero improvement line
     ax.grid(True, linestyle='--', alpha=0.7)
     
     # Add DeBERTa vertical line
-    deberta_row = df[df['model'].str.contains('deberta', case=False)]
     if not deberta_row.empty:
         deberta_val = deberta_row.iloc[0]['zero_accuracy']
         if pd.notna(deberta_val):
-            ax.axvline(deberta_val, color='#ff7f00', linestyle='--', linewidth=2, alpha=0.8, label='DeBERTa')
-            # Add text label near the top of the line
+            ax.axvline(deberta_val, color=c_deberta, linestyle='--', linewidth=2, alpha=0.8, label='DeBERTa Base')
             ylim = ax.get_ylim()
-            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, ' DeBERTa', color='#ff7f00', fontweight='bold', ha='left', va='top', fontsize=9)
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, ' DeBERTa Base', color=c_deberta, fontweight='bold', ha='left', va='top', fontsize=9)
     
+    # Custom Legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='Standard Model', markerfacecolor=c_std, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='Enhanced Model', markerfacecolor=c_enh, markersize=10),
+        Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement'),
+        Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement'),
+        Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='Std -> Enh Shift'),
+    ]
+    ax.legend(handles=legend_elements, loc='lower right')
+
     plt.tight_layout()
     plt.savefig(output_dir / 'learning_potential.png')
     plt.close()
@@ -403,36 +455,63 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
         print("No data available for learning potential (Spearman) plot.")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    # Identify Standard vs Enhanced
+    plot_df['base_name'] = plot_df['model'].apply(lambda x: x.replace('-deberta', ''))
+    plot_df['is_enhanced'] = plot_df['model'].apply(lambda x: '-deberta' in x)
+
+    fig, ax = plt.subplots(figsize=(12, 10))
     
-    # Scatter plot
-    # Color points based on improvement (positive=green, negative=red), Orange for DeBERTa
-    colors = []
+    # Colors
+    c_std = '#1f78b4' # Blue (Standard)
+    c_enh = '#6a3d9a' # Purple (Enhanced)
+    c_deberta = '#ff7f00' # Orange (DeBERTa)
+    c_pos = '#55a868' # Green (Positive Improvement)
+    c_neg = '#c44e52' # Red (Negative Improvement)
+    
+    # Plot points and 0->5 arrows
     for idx, row in plot_df.iterrows():
-        if 'deberta' in row['model']:
-            colors.append('#ff7f00') # Orange for DeBERTa
-        elif row['spearman_impr_pct'] >= 0:
-            colors.append('#55a868') # Green
+        # Determine point color
+        if 'deberta-finetune' in row['model']:
+            color = c_deberta
+        elif row['is_enhanced']:
+            color = c_enh
         else:
-            colors.append('#c44e52') # Red
-    
-    ax.scatter(plot_df['zero_spearman'], plot_df['spearman_impr_pct'], c=colors, s=100, alpha=0.8, edgecolors='w', zorder=3)
-    
-    # Draw arrows from 0-shot to 5-shot
-    for i, (idx, row) in enumerate(plot_df.iterrows()):
+            color = c_std
+            
+        # Determine arrow color based on improvement
+        impr = row['spearman_impr_pct']
+        arrow_color = c_pos if impr >= 0 else c_neg
+        
+        # Plot point
+        ax.scatter(row['zero_spearman'], row['spearman_impr_pct'], color=color, s=120, alpha=0.9, edgecolors='w', zorder=3)
+        
+        # Draw arrow from 0-shot to 5-shot (X-axis shift)
         ax.annotate("", 
                     xy=(row['five_spearman'], row['spearman_impr_pct']), 
                     xytext=(row['zero_spearman'], row['spearman_impr_pct']),
-                    arrowprops=dict(arrowstyle="-|>", color=colors[i], alpha=0.6, lw=1.5),
+                    arrowprops=dict(arrowstyle="-|>", color=arrow_color, alpha=0.6, lw=2),
                     zorder=2)
-    
-    # Add labels
-    texts = []
-    for _, row in plot_df.iterrows():
-        # Offset label slightly up to avoid overlap with arrow/point
-        texts.append(ax.text(row['zero_spearman'], row['spearman_impr_pct'] + 0.8, row['model'], fontsize=9, ha='center', va='bottom'))
         
-    # Set x-axis limits to include both zero and five shot scores AND DeBERTa
+        # Label point
+        label = row['model'].replace('-deberta', '')
+        if row['is_enhanced']:
+            label += '*'
+        ax.text(row['zero_spearman'], row['spearman_impr_pct'] + 0.8, label, fontsize=9, ha='center', va='bottom', alpha=0.8)
+
+    # Connect Standard to Enhanced (New feature)
+    for base_name, group in plot_df.groupby('base_name'):
+        if len(group) == 2:
+            std = group[~group['is_enhanced']].iloc[0]
+            enh = group[group['is_enhanced']].iloc[0]
+            
+            # Draw arrow from Standard to Enhanced
+            ax.annotate("",
+                        xy=(enh['zero_spearman'], enh['spearman_impr_pct']),
+                        xytext=(std['zero_spearman'], std['spearman_impr_pct']),
+                        arrowprops=dict(arrowstyle="->", color='gray', linestyle='--', alpha=0.5, lw=1.5),
+                        zorder=1)
+
+    # Set x-axis limits
     all_scores = pd.concat([plot_df['zero_spearman'], plot_df['five_spearman']])
     
     # Check for DeBERTa to include in limits
@@ -453,14 +532,23 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
     ax.grid(True, linestyle='--', alpha=0.7)
     
     # Add DeBERTa vertical line
-    deberta_row = df[df['model'].str.contains('deberta', case=False)]
     if not deberta_row.empty:
         deberta_val = deberta_row.iloc[0]['zero_spearman']
         if pd.notna(deberta_val):
-            ax.axvline(deberta_val, color='#ff7f00', linestyle='--', linewidth=2, alpha=0.8, label='DeBERTa')
-            # Add text label near the top of the line
+            ax.axvline(deberta_val, color=c_deberta, linestyle='--', linewidth=2, alpha=0.8, label='DeBERTa Base')
             ylim = ax.get_ylim()
-            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, ' DeBERTa', color='#ff7f00', fontweight='bold', ha='left', va='top', fontsize=9)
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, ' DeBERTa Base', color=c_deberta, fontweight='bold', ha='left', va='top', fontsize=9)
+    
+    # Custom Legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='Standard Model', markerfacecolor=c_std, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='Enhanced Model', markerfacecolor=c_enh, markersize=10),
+        Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement'),
+        Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement'),
+        Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='Std -> Enh Shift'),
+    ]
+    ax.legend(handles=legend_elements, loc='lower right')
     
     plt.tight_layout()
     plt.savefig(output_dir / 'learning_potential_spearman.png')
@@ -484,9 +572,8 @@ def main():
     
     plot_accuracy(df, results_dir)
     plot_spearman(df, results_dir)
-    plot_time(df, results_dir)
     plot_improvement(df, results_dir)
-    plot_metric_consistency(df, results_dir)
+    plot_metric_consistency_superposed(df, results_dir)
     plot_learning_potential(df, results_dir)
     plot_learning_potential_spearman(df, results_dir)
     
