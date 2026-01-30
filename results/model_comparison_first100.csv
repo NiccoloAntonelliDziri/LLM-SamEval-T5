@@ -3,6 +3,7 @@ DeBERTa,deberta-finetune,-,0.7103613485673201,0.82
 DeBERTa,deberta-finetune-2,-,0.28361888419978304,0.63
 DeBERTa,smollm-finetune-135M,-,0.3620449782145975,0.66
 DeBERTa,smollm-finetune-360M,-,0.6783670613449327,0.76
+DeBERTa,smollm-finetune-1.7B,-,0.6516122941762825,0.78
 LLM,qwen2.5-coder,zero-shot,0.5875819348454494,0.77
 LLM,olmo-3-think,zero-shot,0.6231983653659102,0.68
 LLM,granite3.3,zero-shot,0.6108372830913754,0.67

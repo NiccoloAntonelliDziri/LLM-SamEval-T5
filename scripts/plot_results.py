@@ -168,12 +168,12 @@ def plot_improvement(df: pd.DataFrame, output_dir: Path):
 
 def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
     """Plot Accuracy vs Spearman correlation for ALL models (Standard + DeBERTa Enhanced)."""
-    # Prepare 0-shot data
-    z_df = df[['model', 'zero_accuracy', 'zero_spearman']].dropna().copy()
+    # Prepare 0-shot data - include rows with both accuracy and spearman (but not necessarily five-shot)
+    z_df = df[df['zero_accuracy'].notna() & df['zero_spearman'].notna()][['model', 'zero_accuracy', 'zero_spearman']].copy()
     z_df = z_df.rename(columns={'zero_accuracy': 'accuracy', 'zero_spearman': 'spearman'})
     
-    # Prepare 5-shot data
-    f_df = df[['model', 'five_accuracy', 'five_spearman']].dropna().copy()
+    # Prepare 5-shot data - only include rows that have both five-shot metrics
+    f_df = df[df['five_accuracy'].notna() & df['five_spearman'].notna()][['model', 'five_accuracy', 'five_spearman']].copy()
     f_df = f_df.rename(columns={'five_accuracy': 'accuracy', 'five_spearman': 'spearman'})
     
     if z_df.empty and f_df.empty:

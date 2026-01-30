@@ -113,7 +113,8 @@ def score_deberta_models(base_path, temp_ref_file, output_results, scoring_scrip
         'deberta-finetune-3',
         'deberta-refinement',
         'smollm-finetune-135M',
-        'smollm-finetune-360M'
+        'smollm-finetune-360M',
+        'smollm-finetune-1.7B'
     ]
     
     temp_pred_file = os.path.join(base_path, 'temp_predictions.jsonl')

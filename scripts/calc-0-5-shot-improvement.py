@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import csv
 import json
 from dataclasses import dataclass
@@ -143,17 +141,16 @@ def main() -> None:
 
 	results = collect_scores(ollama_dir)
 	
-	# Add DeBERTa scores (both v1 and v2) so both versions appear in the summary and plots
-	for dname in ["deberta-finetune", "deberta-finetune-2"]:
-		deberta_dir = repo_root / dname
-		deberta_score_path = deberta_dir / "score.json"
-		deberta_scores = read_score_file(deberta_score_path)
-		if deberta_scores:
-			# Keep original directory name as the model identifier (e.g., 'deberta-finetune' and 'deberta-finetune-2')
-			results[dname] = {"zero": deberta_scores}
+	# Add DeBERTa and BERT base scores
+	for dname in ["deberta-finetune", "deberta-finetune-2", "deberta-base", "bert-base"]:
+		d_dir = repo_root / dname
+		score_path = d_dir / "score.json"
+		scores = read_score_file(score_path)
+		if scores:
+			results[dname] = {"zero": scores}
 
 	# Add SmolLM scores
-	for size in ["135M", "360M"]:
+	for size in ["135M", "360M", "1.7B"]:
 		smollm_dir = repo_root / f"smollm-finetune-{size}"
 		smollm_score_path = smollm_dir / "score.json"
 		smollm_scores = read_score_file(smollm_score_path)
