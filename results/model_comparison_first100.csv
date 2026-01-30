@@ -1,6 +1,6 @@
 model_type,model_name,category,spearman,accuracy
 DeBERTa,deberta-finetune,-,0.7103613485673201,0.82
-DeBERTa,deberta-finetune-2,-,0.7716356709446882,0.85
+DeBERTa,deberta-finetune-2,-,0.28361888419978304,0.63
 DeBERTa,smollm-finetune-135M,-,0.3620449782145975,0.66
 DeBERTa,smollm-finetune-360M,-,0.6783670613449327,0.76
 LLM,qwen2.5-coder,zero-shot,0.5875819348454494,0.77
@@ -12,6 +12,7 @@ LLM,gemma3,zero-shot,0.6347209353683209,0.76
 LLM,deepseek-r1,zero-shot,0.7215588197557037,0.77
 LLM,qwen3,zero-shot,0.6905328988139541,0.79
 LLM,deepseek-r1-think,zero-shot,0.6504665947335703,0.69
+LLM,gpt-oss-20b-think,zero-shot,0.06931756076518288,0.42
 LLM,phi4-mini,zero-shot,0.5351353418403643,0.75
 LLM,ministral-3,zero-shot,0.7105238294482429,0.67
 LLM,openai-gpt-oss-120b,zero-shot,0.6238431156747593,0.72
@@ -24,6 +25,7 @@ LLM,gemma3,five-shot,0.6353918486192535,0.77
 LLM,deepseek-r1,five-shot,0.6174277030320983,0.67
 LLM,qwen3,five-shot,0.534963968742371,0.74
 LLM,deepseek-r1-think,five-shot,0.6298055837217469,0.72
+LLM,gpt-oss-20b-think,five-shot,0.0913499235873851,0.42
 LLM,phi4-mini,five-shot,0.5171755315030896,0.73
 LLM,ministral-3,five-shot,0.7372216855028555,0.67
 LLM,openai-gpt-oss-120b,five-shot,0.7116178015312287,0.71

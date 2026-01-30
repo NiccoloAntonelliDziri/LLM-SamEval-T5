@@ -4,6 +4,9 @@ import pandas as pd
 import sys
 import os
 from pathlib import Path
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.lines import Line2D
 
 # Add the scripts directory to path to allow importing plot_results
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -80,12 +83,129 @@ def process_data(input_file):
     
     return summary_df
 
+def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
+    """Plot Zero-shot Accuracy vs Accuracy Improvement % (legend on left for first100 only)."""
+    plot_df = df[['model', 'zero_accuracy', 'five_accuracy', 'accuracy_impr_pct']].dropna().copy()
+    
+    if plot_df.empty:
+        print("No data available for learning potential plot.")
+        return
+
+    # Identify Standard vs Enhanced
+    plot_df['base_name'] = plot_df['model'].apply(lambda x: x.replace('-deberta', ''))
+    plot_df['is_enhanced'] = plot_df['model'].apply(lambda x: '-deberta' in x)
+
+    fig, ax = plt.subplots(figsize=(12, 10))
+    
+    # Colors
+    c_std = '#1f78b4' # Blue (Standard)
+    c_enh = '#6a3d9a' # Purple (Enhanced)
+    c_orange = '#FFB74D' # Orange (Fine-tuned models)
+    c_pos = '#55a868' # Green (Positive Improvement)
+    c_neg = '#c44e52' # Red (Negative Improvement)
+    
+    # Plot points and 0->5 arrows
+    for idx, row in plot_df.iterrows():
+        # Determine point color
+        if any(x in row['model'] for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+            color = c_orange
+        elif row['is_enhanced']:
+            color = c_enh
+        else:
+            color = c_std
+            
+        # Determine arrow color based on improvement
+        impr = row['accuracy_impr_pct']
+        arrow_color = c_pos if impr >= 0 else c_neg
+        
+        # Plot point
+        ax.scatter(row['zero_accuracy'], row['accuracy_impr_pct'], color=color, s=120, alpha=0.9, edgecolors='w', zorder=3)
+        
+        # Draw arrow from 0-shot to 5-shot (X-axis shift)
+        ax.annotate("", 
+                    xy=(row['five_accuracy'], row['accuracy_impr_pct']), 
+                    xytext=(row['zero_accuracy'], row['accuracy_impr_pct']),
+                    arrowprops=dict(arrowstyle="-|>", color=arrow_color, alpha=0.6, lw=2),
+                    zorder=2)
+        
+        # Label point
+        label = row['model'].replace('-deberta', '')
+        if row['is_enhanced']:
+            label += '*'
+        ax.text(row['zero_accuracy'], row['accuracy_impr_pct'] + 0.8, label, fontsize=9, ha='center', va='bottom', alpha=0.8)
+
+    # Connect Standard to Enhanced
+    # Group by base_name
+    for base_name, group in plot_df.groupby('base_name'):
+        if len(group) == 2:
+            # We have both Standard and Enhanced
+            std = group[~group['is_enhanced']].iloc[0]
+            enh = group[group['is_enhanced']].iloc[0]
+            
+            # Draw arrow from Standard to Enhanced
+            ax.annotate("",
+                        xy=(enh['zero_accuracy'], enh['accuracy_impr_pct']),
+                        xytext=(std['zero_accuracy'], std['accuracy_impr_pct']),
+                        arrowprops=dict(arrowstyle="->", color='gray', linestyle='--', alpha=0.5, lw=1.5),
+                        zorder=1)
+
+    # Set x-axis limits
+    all_scores = pd.concat([plot_df['zero_accuracy'], plot_df['five_accuracy']])
+    
+    # Check for DeBERTa to include in limits (Prefer version 2)
+    deberta_row = df[df['model'] == 'deberta-finetune-2']
+    if deberta_row.empty:
+        deberta_row = df[df['model'] == 'deberta-finetune']
+        
+    if not deberta_row.empty:
+         val = deberta_row.iloc[0]['zero_accuracy']
+         if pd.notna(val):
+             all_scores = pd.concat([all_scores, pd.Series([val])])
+
+    x_min, x_max = all_scores.min(), all_scores.max()
+    padding = (x_max - x_min) * 0.1
+    ax.set_xlim(x_min - padding, x_max + padding)
+
+    ax.set_xlabel('Baseline Performance (Zero-shot Accuracy)')
+    ax.set_ylabel('Benefit from Few-shot (Accuracy Improvement %)')
+    ax.set_title('Learning Potential (Accuracy): LLM vs Fine-tuned Models')
+    ax.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.3) # Zero improvement line
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    # Add DeBERTa vertical line
+    if not deberta_row.empty:
+        deberta_val = deberta_row.iloc[0]['zero_accuracy']
+        deberta_name = deberta_row.iloc[0]['model']
+        label_text = ' Fine-tuned DeBERTa'
+        
+        if pd.notna(deberta_val):
+            ax.axvline(deberta_val, color=c_orange, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
+            ylim = ax.get_ylim()
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=9)
+    
+    # Custom Legend - MOVED TO LEFT for first100 plots
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='LLM Only', markerfacecolor=c_std, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='LLM + DeBERTa', markerfacecolor=c_enh, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='Fine-tuned Models', markerfacecolor=c_orange, markersize=10),
+        Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement'),
+        Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement'),
+        Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='LLM -> +DeBERTa Shift'),
+    ]
+    ax.legend(handles=legend_elements, loc='lower left')
+
+    plt.tight_layout()
+    plt.savefig(output_dir / 'learning_potential.png')
+    plt.close()
+    print(f"Saved learning_potential.png")
+
 def main():
     base_path = Path('/home/niccolo/Torino/LLM-SamEval-T5')
     results_dir = base_path / 'results'
     input_file = results_dir / 'model_comparison_first100.csv'
     output_csv = results_dir / 'summary_first100.csv'
     output_plots_dir = results_dir / 'plots_first100'
+    full_summary_file = results_dir / 'summary_0shot_5shot_scores.csv'
     
     if not input_file.exists():
         print(f"Error: Input file {input_file} not found.")
@@ -93,6 +213,20 @@ def main():
 
     print(f"Processing {input_file}...")
     summary_df = process_data(input_file)
+    
+    # Add bert-base and deberta-base from the full summary
+    if full_summary_file.exists():
+        full_summary = pd.read_csv(full_summary_file)
+        for model_name in ['bert-base', 'deberta-base']:
+            model_row = full_summary[full_summary['model'] == model_name]
+            if not model_row.empty:
+                row_dict = {'model': model_name}
+                model_row = model_row.iloc[0]
+                if pd.notna(model_row['zero_accuracy']):
+                    row_dict['zero_accuracy'] = model_row['zero_accuracy']
+                if pd.notna(model_row['zero_spearman']):
+                    row_dict['zero_spearman'] = model_row['zero_spearman']
+                summary_df = pd.concat([summary_df, pd.DataFrame([row_dict])], ignore_index=True)
     
     print(f"Saving summary to {output_csv}...")
     summary_df.to_csv(output_csv, index=False)
@@ -111,7 +245,7 @@ def main():
         plot_results.plot_spearman(summary_df, output_plots_dir)
         plot_results.plot_improvement(summary_df, output_plots_dir)
         plot_results.plot_metric_consistency_superposed(summary_df, output_plots_dir)
-        plot_results.plot_learning_potential(summary_df, output_plots_dir)
+        plot_learning_potential_first100(summary_df, output_plots_dir)  # Use custom function with left legend
         # Note: plot_learning_potential_spearman might crash if missing columns, let's check
         if hasattr(plot_results, 'plot_learning_potential_spearman'):
              plot_results.plot_learning_potential_spearman(summary_df, output_plots_dir)
