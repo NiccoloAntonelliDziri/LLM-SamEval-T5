@@ -73,8 +73,7 @@ def plot_grouped_bars(df: pd.DataFrame, metric_prefix: str, title: str, xlabel: 
     c_5_std = '#1f78b4' # Dark Blue
     c_0_enh = '#cab2d6' # Light Purple
     c_5_enh = '#6a3d9a' # Dark Purple
-    c_deberta = '#ff7f00' # Orange
-    c_smollm = '#FFB74D' # Lighter Orange
+    c_orange = '#FFB74D' # Orange (BERT/DeBERTa base, SmolLM)
 
     # Helper to get data safely
     def get_data(row, col):
@@ -86,21 +85,20 @@ def plot_grouped_bars(df: pd.DataFrame, metric_prefix: str, title: str, xlabel: 
     
     for i, (model_name, row) in enumerate(grouped_df.iterrows()):
         # Determine colors for this model
-        # Special cases for DeBERTa base and SmolLM
-        is_deberta_base = 'deberta-finetune' in model_name
-        is_smollm = 'smollm' in model_name
+        # Special cases for DeBERTa base, BERT base and SmolLM
+        is_orange_model = any(x in model_name for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm'])
         
         # Standard 0-shot
         v_0_std = get_data(row, f'zero_{metric_prefix}_std')
         if pd.notna(v_0_std):
-            c = c_deberta if is_deberta_base else (c_smollm if is_smollm else c_0_std)
+            c = c_orange if is_orange_model else c_0_std
             rect = ax.barh(i - 1.5*width, v_0_std, width, color=c, alpha=0.9)
             ax.bar_label(rect, fmt='%.2f', padding=3, fontsize=8)
 
         # Standard 5-shot
         v_5_std = get_data(row, f'five_{metric_prefix}_std')
         if pd.notna(v_5_std):
-            c = c_deberta if is_deberta_base else (c_smollm if is_smollm else c_5_std)
+            c = c_orange if is_orange_model else c_5_std
             rect = ax.barh(i - 0.5*width, v_5_std, width, color=c, alpha=0.9)
             ax.bar_label(rect, fmt='%.2f', padding=3, fontsize=8)
 
@@ -140,12 +138,11 @@ def plot_grouped_bars(df: pd.DataFrame, metric_prefix: str, title: str, xlabel: 
     # Custom Legend
     from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor=c_0_std, label='0-shot (Standard)'),
-        Patch(facecolor=c_5_std, label='5-shot (Standard)'),
-        Patch(facecolor=c_0_enh, label='0-shot (Enhanced)'),
-        Patch(facecolor=c_5_enh, label='5-shot (Enhanced)'),
-        Patch(facecolor=c_deberta, label='DeBERTa Base'),
-        Patch(facecolor=c_smollm, label='SmolLM'),
+        Patch(facecolor=c_0_std, label='0-shot (LLM)'),
+        Patch(facecolor=c_5_std, label='5-shot (LLM)'),
+        Patch(facecolor=c_0_enh, label='0-shot (LLM + DeBERTa)'),
+        Patch(facecolor=c_5_enh, label='5-shot (LLM + DeBERTa)'),
+        Patch(facecolor=c_orange, label='Fine-tuned Models'),
     ]
     ax.legend(handles=legend_elements, loc='lower right')
     
@@ -158,16 +155,16 @@ def plot_grouped_bars(df: pd.DataFrame, metric_prefix: str, title: str, xlabel: 
 
 def plot_accuracy(df: pd.DataFrame, output_dir: Path):
     """Plot Accuracy for all models (Grouped)."""
-    plot_grouped_bars(df, 'accuracy', 'Model Accuracy: Standard vs DeBERTa Enhanced', 'Accuracy', output_dir / 'accuracy_comparison.png')
+    plot_grouped_bars(df, 'accuracy', 'Accuracy Comparison: LLM vs Fine-tuned Models', 'Accuracy', output_dir / 'accuracy_comparison.png')
 
 def plot_spearman(df: pd.DataFrame, output_dir: Path):
     """Plot Spearman for all models (Grouped)."""
-    plot_grouped_bars(df, 'spearman', 'Model Spearman Correlation: Standard vs DeBERTa Enhanced', 'Spearman Correlation', output_dir / 'spearman_comparison.png')
+    plot_grouped_bars(df, 'spearman', 'Spearman Correlation: LLM vs Fine-tuned Models', 'Spearman Correlation', output_dir / 'spearman_comparison.png')
 
 def plot_improvement(df: pd.DataFrame, output_dir: Path):
     """Plot Accuracy with Improvement % annotations."""
     # This is basically the same as plot_accuracy but with annotations enabled.
-    plot_grouped_bars(df, 'accuracy', 'Few-shot Learning Impact: Standard vs Enhanced', 'Accuracy', output_dir / 'few_shot_improvement.png', show_improvement=True)
+    plot_grouped_bars(df, 'accuracy', 'Few-shot Learning Impact: LLM vs Fine-tuned Models', 'Accuracy', output_dir / 'few_shot_improvement.png', show_improvement=True)
 
 def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
     """Plot Accuracy vs Spearman correlation for ALL models (Standard + DeBERTa Enhanced)."""
@@ -188,20 +185,14 @@ def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
     # Colors
     c_0 = '#a6cee3' # Light Blue
     c_5 = '#1f78b4' # Dark Blue
-    c_deberta = '#ff7f00' # Orange for DeBERTa Base
+    c_orange = '#FFB74D' # Orange (SmolLM, BERT/DeBERTa base)
     c_0_enhanced = '#cab2d6' # Light Purple
     c_5_enhanced = '#6a3d9a' # Dark Purple
-    c_smollm_135 = '#FFB74D' # Lighter Orange
-    c_smollm_360 = '#FFB74D' # Same Lighter Orange
 
     # Helper to get color
     def get_color(m, shot):
-        if 'deberta-finetune' in m:
-            return c_deberta
-        if 'smollm-135M' in m:
-            return c_smollm_135
-        if 'smollm-360M' in m:
-            return c_smollm_360
+        if any(x in m for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+            return c_orange
         if '-deberta' in m:
             return c_0_enhanced if shot == 0 else c_5_enhanced
         return c_0 if shot == 0 else c_5
@@ -234,16 +225,16 @@ def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
 
     ax.set_xlabel('Accuracy')
     ax.set_ylabel('Spearman Correlation')
-    ax.set_title('Metric Consistency: Standard vs DeBERTa Enhanced Models')
+    ax.set_title('Metric Consistency: LLM vs Fine-tuned Models')
     
     # Custom Legend
     from matplotlib.lines import Line2D
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='0-shot (Standard)', markerfacecolor=c_0, markersize=10, markeredgecolor='k'),
-        Line2D([0], [0], marker='s', color='w', label='5-shot (Standard)', markerfacecolor=c_5, markersize=10, markeredgecolor='k'),
-        Line2D([0], [0], marker='o', color='w', label='0-shot (Enhanced)', markerfacecolor=c_0_enhanced, markersize=10, markeredgecolor='k'),
-        Line2D([0], [0], marker='s', color='w', label='5-shot (Enhanced)', markerfacecolor=c_5_enhanced, markersize=10, markeredgecolor='k'),
-        Line2D([0], [0], marker='o', color='w', label='DeBERTa Base', markerfacecolor=c_deberta, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='o', color='w', label='0-shot (LLM)', markerfacecolor=c_0, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='s', color='w', label='5-shot (LLM)', markerfacecolor=c_5, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='o', color='w', label='0-shot (LLM + DeBERTa)', markerfacecolor=c_0_enhanced, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='s', color='w', label='5-shot (LLM + DeBERTa)', markerfacecolor=c_5_enhanced, markersize=10, markeredgecolor='k'),
+        Line2D([0], [0], marker='o', color='w', label='Fine-tuned Models', markerfacecolor=c_orange, markersize=10, markeredgecolor='k'),
     ]
     ax.legend(handles=legend_elements)
     
@@ -271,15 +262,15 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
     # Colors
     c_std = '#1f78b4' # Blue (Standard)
     c_enh = '#6a3d9a' # Purple (Enhanced)
-    c_deberta = '#ff7f00' # Orange (DeBERTa)
+    c_orange = '#FFB74D' # Orange (Fine-tuned models)
     c_pos = '#55a868' # Green (Positive Improvement)
     c_neg = '#c44e52' # Red (Negative Improvement)
     
     # Plot points and 0->5 arrows
     for idx, row in plot_df.iterrows():
         # Determine point color
-        if 'deberta-finetune' in row['model']:
-            color = c_deberta
+        if any(x in row['model'] for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+            color = c_orange
         elif row['is_enhanced']:
             color = c_enh
         else:
@@ -339,7 +330,7 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
 
     ax.set_xlabel('Baseline Performance (Zero-shot Accuracy)')
     ax.set_ylabel('Benefit from Few-shot (Accuracy Improvement %)')
-    ax.set_title('Learning Potential: Baseline vs Improvement (Accuracy)')
+    ax.set_title('Learning Potential (Accuracy): LLM vs Fine-tuned Models')
     ax.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.3) # Zero improvement line
     ax.grid(True, linestyle='--', alpha=0.7)
     
@@ -347,21 +338,22 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
     if not deberta_row.empty:
         deberta_val = deberta_row.iloc[0]['zero_accuracy']
         deberta_name = deberta_row.iloc[0]['model']
-        label_text = ' DeBERTa V2' if '2' in deberta_name else ' DeBERTa Base'
+        label_text = ' Fine-tuned DeBERTa'
         
         if pd.notna(deberta_val):
-            ax.axvline(deberta_val, color=c_deberta, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
+            ax.axvline(deberta_val, color=c_orange, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
             ylim = ax.get_ylim()
-            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_deberta, fontweight='bold', ha='left', va='top', fontsize=9)
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=9)
     
     # Custom Legend
     from matplotlib.lines import Line2D
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='Standard Model', markerfacecolor=c_std, markersize=10),
-        Line2D([0], [0], marker='o', color='w', label='Enhanced Model', markerfacecolor=c_enh, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='LLM Only', markerfacecolor=c_std, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='LLM + DeBERTa', markerfacecolor=c_enh, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='Fine-tuned Models', markerfacecolor=c_orange, markersize=10),
         Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement'),
         Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement'),
-        Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='Std -> Enh Shift'),
+        Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='LLM -> +DeBERTa Shift'),
     ]
     ax.legend(handles=legend_elements, loc='lower right')
 
@@ -387,15 +379,15 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
     # Colors
     c_std = '#1f78b4' # Blue (Standard)
     c_enh = '#6a3d9a' # Purple (Enhanced)
-    c_deberta = '#ff7f00' # Orange (DeBERTa)
+    c_orange = '#FFB74D' # Orange (Encoder models)
     c_pos = '#55a868' # Green (Positive Improvement)
     c_neg = '#c44e52' # Red (Negative Improvement)
     
     # Plot points and 0->5 arrows
     for idx, row in plot_df.iterrows():
         # Determine point color
-        if 'deberta-finetune' in row['model']:
-            color = c_deberta
+        if any(x in row['model'] for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+            color = c_orange
         elif row['is_enhanced']:
             color = c_enh
         else:
@@ -453,7 +445,7 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
 
     ax.set_xlabel('Baseline Performance (Zero-shot Spearman)')
     ax.set_ylabel('Benefit from Few-shot (Spearman Improvement %)')
-    ax.set_title('Learning Potential: Baseline vs Improvement (Spearman)')
+    ax.set_title('Learning Potential (Spearman): LLM vs Fine-tuned Models')
     ax.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.3) # Zero improvement line
     ax.grid(True, linestyle='--', alpha=0.7)
     
@@ -461,21 +453,22 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
     if not deberta_row.empty:
         deberta_val = deberta_row.iloc[0]['zero_spearman']
         deberta_name = deberta_row.iloc[0]['model']
-        label_text = ' DeBERTa V2' if '2' in deberta_name else ' DeBERTa Base'
+        label_text = ' Fine-tuned DeBERTa'
         
         if pd.notna(deberta_val):
-            ax.axvline(deberta_val, color=c_deberta, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
+            ax.axvline(deberta_val, color=c_orange, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
             ylim = ax.get_ylim()
-            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_deberta, fontweight='bold', ha='left', va='top', fontsize=9)
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=9)
     
     # Custom Legend
     from matplotlib.lines import Line2D
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='Standard Model', markerfacecolor=c_std, markersize=10),
-        Line2D([0], [0], marker='o', color='w', label='Enhanced Model', markerfacecolor=c_enh, markersize=10),
-        Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement'),
-        Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement'),
-        Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='Std -> Enh Shift'),
+        Line2D([0], [0], marker='o', color='w', label='LLM Only', markerfacecolor=c_std, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='LLM + DeBERTa', markerfacecolor=c_enh, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='Fine-tuned Models', markerfacecolor=c_orange, markersize=10),
+        Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement (few-shot)'),
+        Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement (few-shot)'),
+        Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='LLM -> +DeBERTa Shift'),
     ]
     ax.legend(handles=legend_elements, loc='lower right')
     
@@ -488,6 +481,7 @@ def main():
     script_path = Path(__file__).resolve()
     repo_root = script_path.parents[1]
     results_dir = repo_root / "results"
+    output_dir = results_dir / "plots_unfiltered"
     csv_path = results_dir / "summary_0shot_5shot_scores.csv"
     
     if not csv_path.exists():
@@ -497,14 +491,18 @@ def main():
     print(f"Reading data from {csv_path}")
     df = pd.read_csv(csv_path)
     
+    # Create the output directory if it doesn't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
     set_style()
     
-    plot_accuracy(df, results_dir)
-    plot_spearman(df, results_dir)
-    plot_improvement(df, results_dir)
-    plot_metric_consistency_superposed(df, results_dir)
-    plot_learning_potential(df, results_dir)
-    plot_learning_potential_spearman(df, results_dir)
+    print(f"Generating unfiltered plots in {output_dir}...")
+    plot_accuracy(df, output_dir)
+    plot_spearman(df, output_dir)
+    plot_improvement(df, output_dir)
+    plot_metric_consistency_superposed(df, output_dir)
+    plot_learning_potential(df, output_dir)
+    plot_learning_potential_spearman(df, output_dir)
     
     print("All plots generated successfully.")
 

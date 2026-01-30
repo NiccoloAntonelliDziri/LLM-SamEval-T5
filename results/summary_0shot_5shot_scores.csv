@@ -1,4 +1,6 @@
 model,zero_accuracy,five_accuracy,accuracy_impr_pct,zero_spearman,five_spearman,spearman_impr_pct,zero_avg_time,five_avg_time
+bert-base,0.734694,,,0.493006,,,,
+deberta-base,0.750000,,,0.572997,,,,
 deberta-finetune,0.797619,,,0.678953,,,,
 deberta-finetune-2,0.823129,,,0.692627,,,,
 deepseek-r1,0.651361,0.670068,2.87,0.547800,0.528861,-3.46,0.414700,0.415900
