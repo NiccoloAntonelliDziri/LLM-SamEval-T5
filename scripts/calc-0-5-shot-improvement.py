@@ -142,12 +142,12 @@ def main() -> None:
 	results = collect_scores(ollama_dir)
 	
 	# Add DeBERTa and BERT base scores
-	for dname in ["deberta-finetune", "deberta-finetune-2", "deberta-base", "bert-base"]:
-		d_dir = repo_root / dname
+	for folder_name, display_name in [("DeBERTa-NLI", "DeBERTa-NLI"), ("deberta-base", "deberta-base"), ("bert-base", "bert-base")]:
+		d_dir = repo_root / folder_name
 		score_path = d_dir / "score.json"
 		scores = read_score_file(score_path)
 		if scores:
-			results[dname] = {"zero": scores}
+			results[display_name] = {"zero": scores}
 
 	# Add SmolLM scores
 	for size in ["135M", "360M", "1.7B"]:

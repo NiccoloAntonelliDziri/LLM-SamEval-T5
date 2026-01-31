@@ -3,6 +3,6 @@ __pycache__/
 deberta-base/model/
 bert-base/model/
 deberta-finetune/model/
-deberta-finetune-2/model/
+DeBERTa-NLI/model/
 smollm-finetune-135M/model/
 smollm-finetune-360M/model/

@@ -27,6 +27,56 @@ def set_style():
         'axes.spines.right': False,
     })
 
+def clean_and_normalize_data(df: pd.DataFrame):
+    """Clean and normalize model names."""
+    df = df.copy()
+    
+    # Remove variants that are known to be broken or shouldn't be plotted separately
+    broken_models = [
+        'deepseek-r1-think-combined-deberta',
+        'deepseek-r1-think-combined',
+        'deepseek-r1-think-2',
+        'deepseek-r1-think-2-deberta'
+    ]
+    if 'model' in df.columns:
+        df = df[~df['model'].isin(broken_models)]
+    
+        # Unified model naming
+        def normalize_name(name):
+            if not isinstance(name, str):
+                return name
+            
+            # DeepSeek R1 normalization
+            if 'deepseek-r1-think' in name:
+                suffix = '-deberta' if '-deberta' in name else ''
+                return 'deepseek-r1-think' + suffix
+            if 'deepseek-r1' in name and 'think' not in name:
+                suffix = '-deberta' if '-deberta' in name else ''
+                return 'deepseek-r1' + suffix
+            
+            # Olmo normalization
+            if name.startswith('olmo-3'):
+                suffix = '-deberta' if '-deberta' in name else ''
+                if 'think' in name:
+                    return 'olmo-3-think' + suffix
+                else:
+                    return 'olmo-3' + suffix
+            
+            # Remove common suffixes that clutter the plot
+            clean_name = name.replace('-combined', '').replace('-random-100', '').replace('-7b-instruct', '')
+            return clean_name
+
+        df['model'] = df['model'].apply(normalize_name)
+        
+        # When duplicates occur after normalization, we need a way to pick the best one.
+        # For LLM metrics, we generally prefer rows that have both metrics if possible,
+        # or we could group and take the max/mean. Here we'll take the max accuracy to be safe.
+        if 'zero_accuracy' in df.columns:
+            df = df.sort_values(by=['model', 'zero_accuracy'], ascending=[True, False])
+        df = df.drop_duplicates(subset=['model'], keep='first')
+    
+    return df
+
 def prepare_grouped_data(df: pd.DataFrame, sort_metric: str):
     """
     Prepare data for grouped plotting.
@@ -34,11 +84,25 @@ def prepare_grouped_data(df: pd.DataFrame, sort_metric: str):
     - zero_std, five_std (Standard)
     - zero_enh, five_enh (Enhanced)
     """
-    df = df.copy()
+    df = clean_and_normalize_data(df)
     df['base_name'] = df['model'].apply(lambda x: x.replace('-deberta', ''))
     df['is_enhanced'] = df['model'].apply(lambda x: '-deberta' in x)
     
     # Separate standard and enhanced
+    std_df = df[~df['is_enhanced']].set_index('base_name')
+    enh_df = df[df['is_enhanced']].set_index('base_name')
+    
+    # Merge
+    merged = std_df.join(enh_df, lsuffix='_std', rsuffix='_enh', how='outer')
+    
+    # Sort
+    # Prefer sorting by standard zero-shot metric, if available
+    sort_col = f'{sort_metric}_std'
+    if sort_col in merged.columns:
+        merged = merged.sort_values(sort_col, ascending=True)
+    
+    return merged
+
     std_df = df[~df['is_enhanced']].set_index('base_name')
     enh_df = df[df['is_enhanced']].set_index('base_name')
     
@@ -86,7 +150,7 @@ def plot_grouped_bars(df: pd.DataFrame, metric_prefix: str, title: str, xlabel: 
     for i, (model_name, row) in enumerate(grouped_df.iterrows()):
         # Determine colors for this model
         # Special cases for DeBERTa base, BERT base and SmolLM
-        is_orange_model = any(x in model_name for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm'])
+        is_orange_model = any(x in model_name for x in ['DeBERTa-NLI', 'deberta-base', 'bert-base', 'smollm'])
         
         # Standard 0-shot
         v_0_std = get_data(row, f'zero_{metric_prefix}_std')
@@ -142,7 +206,7 @@ def plot_grouped_bars(df: pd.DataFrame, metric_prefix: str, title: str, xlabel: 
         Patch(facecolor=c_5_std, label='5-shot (LLM)'),
         Patch(facecolor=c_0_enh, label='0-shot (LLM + DeBERTa)'),
         Patch(facecolor=c_5_enh, label='5-shot (LLM + DeBERTa)'),
-        Patch(facecolor=c_orange, label='Fine-tuned Models'),
+        Patch(facecolor=c_orange, label='DeBERTa-NLI'),
     ]
     ax.legend(handles=legend_elements, loc='lower right')
     
@@ -168,6 +232,7 @@ def plot_improvement(df: pd.DataFrame, output_dir: Path):
 
 def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
     """Plot Accuracy vs Spearman correlation for ALL models (Standard + DeBERTa Enhanced)."""
+    df = clean_and_normalize_data(df)
     # Prepare 0-shot data - include rows with both accuracy and spearman (but not necessarily five-shot)
     z_df = df[df['zero_accuracy'].notna() & df['zero_spearman'].notna()][['model', 'zero_accuracy', 'zero_spearman']].copy()
     z_df = z_df.rename(columns={'zero_accuracy': 'accuracy', 'zero_spearman': 'spearman'})
@@ -191,7 +256,7 @@ def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
 
     # Helper to get color
     def get_color(m, shot):
-        if any(x in m for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+        if any(x in m for x in ['DeBERTa-NLI', 'deberta-base', 'bert-base', 'smollm']):
             return c_orange
         if '-deberta' in m:
             return c_0_enhanced if shot == 0 else c_5_enhanced
@@ -221,7 +286,7 @@ def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
         label = row['model'].replace('-deberta', '')
         if '-deberta' in row['model']:
             label += '*' # Mark enhanced models
-        ax.text(row['accuracy'], row['spearman'], label, fontsize=10, alpha=1)
+        ax.text(row['accuracy'], row['spearman'], label, fontsize=14, alpha=1)
 
     ax.set_xlabel('Accuracy')
     ax.set_ylabel('Spearman Correlation')
@@ -247,6 +312,7 @@ def plot_metric_consistency_superposed(df: pd.DataFrame, output_dir: Path):
 
 def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
     """Plot Zero-shot Accuracy vs Accuracy Improvement %."""
+    df = clean_and_normalize_data(df)
     plot_df = df[['model', 'zero_accuracy', 'five_accuracy', 'accuracy_impr_pct']].dropna().copy()
     
     if plot_df.empty:
@@ -269,7 +335,7 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
     # Plot points and 0->5 arrows
     for idx, row in plot_df.iterrows():
         # Determine point color
-        if any(x in row['model'] for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+        if any(x in row['model'] for x in ['DeBERTa-NLI', 'deberta-base', 'bert-base', 'smollm']):
             color = c_orange
         elif row['is_enhanced']:
             color = c_enh
@@ -294,7 +360,7 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
         label = row['model'].replace('-deberta', '')
         if row['is_enhanced']:
             label += '*'
-        ax.text(row['zero_accuracy'], row['accuracy_impr_pct'] + 0.8, label, fontsize=9, ha='center', va='bottom', alpha=0.8)
+        ax.text(row['zero_accuracy'], row['accuracy_impr_pct'] + 0.8, label, fontsize=14, ha='center', va='bottom', alpha=0.8)
 
     # Connect Standard to Enhanced
     # Group by base_name
@@ -314,10 +380,8 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
     # Set x-axis limits
     all_scores = pd.concat([plot_df['zero_accuracy'], plot_df['five_accuracy']])
     
-    # Check for DeBERTa to include in limits (Prefer version 2)
-    deberta_row = df[df['model'] == 'deberta-finetune-2']
-    if deberta_row.empty:
-        deberta_row = df[df['model'] == 'deberta-finetune']
+    # Check for DeBERTa to include in limits
+    deberta_row = df[df['model'] == 'DeBERTa-NLI']
         
     if not deberta_row.empty:
          val = deberta_row.iloc[0]['zero_accuracy']
@@ -330,7 +394,7 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
 
     ax.set_xlabel('Baseline Performance (Zero-shot Accuracy)')
     ax.set_ylabel('Benefit from Few-shot (Accuracy Improvement %)')
-    ax.set_title('Learning Potential (Accuracy): LLM vs Fine-tuned Models')
+    ax.set_title('Few-shot Improvement vs Zero-shot Baseline (Accuracy)')
     ax.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.3) # Zero improvement line
     ax.grid(True, linestyle='--', alpha=0.7)
     
@@ -338,19 +402,19 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
     if not deberta_row.empty:
         deberta_val = deberta_row.iloc[0]['zero_accuracy']
         deberta_name = deberta_row.iloc[0]['model']
-        label_text = ' Fine-tuned DeBERTa'
+        label_text = ' DeBERTa-NLI'
         
         if pd.notna(deberta_val):
             ax.axvline(deberta_val, color=c_orange, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
             ylim = ax.get_ylim()
-            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=9)
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=14)
     
     # Custom Legend
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', label='LLM Only', markerfacecolor=c_std, markersize=10),
         Line2D([0], [0], marker='o', color='w', label='LLM + DeBERTa', markerfacecolor=c_enh, markersize=10),
-        Line2D([0], [0], marker='o', color='w', label='Fine-tuned Models', markerfacecolor=c_orange, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='DeBERTa-NLI', markerfacecolor=c_orange, markersize=10),
         Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement'),
         Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement'),
         Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='LLM -> +DeBERTa Shift'),
@@ -364,6 +428,7 @@ def plot_learning_potential(df: pd.DataFrame, output_dir: Path):
 
 def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
     """Plot Zero-shot Spearman vs Spearman Improvement %."""
+    df = clean_and_normalize_data(df)
     plot_df = df[['model', 'zero_spearman', 'five_spearman', 'spearman_impr_pct']].dropna().copy()
     
     if plot_df.empty:
@@ -386,7 +451,7 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
     # Plot points and 0->5 arrows
     for idx, row in plot_df.iterrows():
         # Determine point color
-        if any(x in row['model'] for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+        if any(x in row['model'] for x in ['DeBERTa-NLI', 'deberta-base', 'bert-base', 'smollm']):
             color = c_orange
         elif row['is_enhanced']:
             color = c_enh
@@ -411,7 +476,7 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
         label = row['model'].replace('-deberta', '')
         if row['is_enhanced']:
             label += '*'
-        ax.text(row['zero_spearman'], row['spearman_impr_pct'] + 0.8, label, fontsize=9, ha='center', va='bottom', alpha=0.8)
+        ax.text(row['zero_spearman'], row['spearman_impr_pct'] + 0.8, label, fontsize=14, ha='center', va='bottom', alpha=0.8)
 
     # Connect Standard to Enhanced (New feature)
     for base_name, group in plot_df.groupby('base_name'):
@@ -429,10 +494,8 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
     # Set x-axis limits
     all_scores = pd.concat([plot_df['zero_spearman'], plot_df['five_spearman']])
     
-    # Check for DeBERTa to include in limits (Prefer version 2)
-    deberta_row = df[df['model'] == 'deberta-finetune-2']
-    if deberta_row.empty:
-        deberta_row = df[df['model'] == 'deberta-finetune']
+    # Check for DeBERTa to include in limits
+    deberta_row = df[df['model'] == 'DeBERTa-NLI']
 
     if not deberta_row.empty:
          val = deberta_row.iloc[0]['zero_spearman']
@@ -445,7 +508,7 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
 
     ax.set_xlabel('Baseline Performance (Zero-shot Spearman)')
     ax.set_ylabel('Benefit from Few-shot (Spearman Improvement %)')
-    ax.set_title('Learning Potential (Spearman): LLM vs Fine-tuned Models')
+    ax.set_title('Few-shot Improvement vs Zero-shot Baseline (Spearman)')
     ax.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.3) # Zero improvement line
     ax.grid(True, linestyle='--', alpha=0.7)
     
@@ -453,19 +516,19 @@ def plot_learning_potential_spearman(df: pd.DataFrame, output_dir: Path):
     if not deberta_row.empty:
         deberta_val = deberta_row.iloc[0]['zero_spearman']
         deberta_name = deberta_row.iloc[0]['model']
-        label_text = ' Fine-tuned DeBERTa'
+        label_text = ' DeBERTa-NLI'
         
         if pd.notna(deberta_val):
             ax.axvline(deberta_val, color=c_orange, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
             ylim = ax.get_ylim()
-            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=9)
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=14)
     
     # Custom Legend
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', label='LLM Only', markerfacecolor=c_std, markersize=10),
         Line2D([0], [0], marker='o', color='w', label='LLM + DeBERTa', markerfacecolor=c_enh, markersize=10),
-        Line2D([0], [0], marker='o', color='w', label='Fine-tuned Models', markerfacecolor=c_orange, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='DeBERTa-NLI', markerfacecolor=c_orange, markersize=10),
         Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement (few-shot)'),
         Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement (few-shot)'),
         Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='LLM -> +DeBERTa Shift'),

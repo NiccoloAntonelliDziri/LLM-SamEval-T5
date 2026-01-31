@@ -10,13 +10,14 @@ import csv
 import subprocess
 from pathlib import Path
 
-def load_first_n_predictions(filepath, n=100):
+def load_predictions_for_ids(filepath, target_ids):
     """
-    Load predictions for the first n items (IDs 0 to n-1).
+    Load predictions for specific target IDs.
     If a prediction is valid (compatible range), it is kept.
     If an ID is missing, we fill it with a default value of 3.
     """
     predictions_map = {}
+    target_ids_str = [str(tid) for tid in target_ids]
     
     if os.path.exists(filepath):
         try:
@@ -25,13 +26,8 @@ def load_first_n_predictions(filepath, n=100):
                     try:
                         item = json.loads(line)
                         if 'id' in item and 'prediction' in item:
-                            # Handle string or int ids
-                            try:
-                                item_id = int(item['id'])
-                            except ValueError:
-                                continue
-                                
-                            if 0 <= item_id < n:
+                            item_id = str(item['id'])
+                            if item_id in target_ids_str:
                                 predictions_map[item_id] = item['prediction']
                     except json.JSONDecodeError:
                         continue
@@ -39,12 +35,13 @@ def load_first_n_predictions(filepath, n=100):
             print(f"Warning: Error reading {filepath}: {e}")
     
     # Construct the final list, imputing missing values
+    # We maintain the order of target_ids and assign consecutive ids 0..n-1 for the scoring script
     final_predictions = []
     missing_count = 0
     
-    for i in range(n):
-        if i in predictions_map:
-            final_predictions.append({"id": str(i), "prediction": predictions_map[i]})
+    for i, tid in enumerate(target_ids_str):
+        if tid in predictions_map:
+            final_predictions.append({"id": str(i), "prediction": predictions_map[tid]})
         else:
             # Impute missing value
             final_predictions.append({"id": str(i), "prediction": 3.0})
@@ -63,9 +60,23 @@ def load_gold_data(filepath):
             gold_data.append(json.loads(line))
     return gold_data
 
-def filter_first_n_items(data, n=100):
-    """Filter data to only first n items by ID."""
-    return [item for item in data if int(item.get('id', -1)) < n]
+def filter_items_by_id(data, target_ids):
+    """Filter data to only specific IDs and map them to consecutive IDs 0..n-1."""
+    target_ids_str = [str(tid) for tid in target_ids]
+    filtered = []
+    
+    # Create a map for quick lookup
+    data_map = {str(item.get('id')): item for item in data}
+    
+    for i, tid in enumerate(target_ids_str):
+        if tid in data_map:
+            item = data_map[tid].copy()
+            item['id'] = str(i) # Map to consecutive id for scoring script
+            filtered.append(item)
+        else:
+            print(f"Warning: ID {tid} not found in reference data")
+            
+    return filtered
 
 def calculate_scores(predictions_data, temp_ref_file, temp_pred_file, temp_score_file, scoring_script_path):
     """Calculate spearman and accuracy scores by calling scoring.py."""
@@ -103,13 +114,12 @@ def calculate_scores(predictions_data, temp_ref_file, temp_pred_file, temp_score
         if os.path.exists(temp_score_file):
             os.remove(temp_score_file)
 
-def score_deberta_models(base_path, temp_ref_file, output_results, scoring_script_path):
+def score_deberta_models(base_path, temp_ref_file, output_results, scoring_script_path, target_ids):
     """Score DeBERTa model predictions."""
     print("\n=== Scoring DeBERTa Models ===")
     
     deberta_dirs = [
-        'deberta-finetune',
-        'deberta-finetune-2',
+        'DeBERTa-NLI',
         'deberta-finetune-3',
         'deberta-refinement',
         'smollm-finetune-135M',
@@ -126,7 +136,7 @@ def score_deberta_models(base_path, temp_ref_file, output_results, scoring_scrip
         
         if os.path.exists(pred_file):
             print(f"\nScoring {dir_name}...")
-            predictions = load_first_n_predictions(pred_file, n=100)
+            predictions = load_predictions_for_ids(pred_file, target_ids)
             
             if predictions:
                 spearman, accuracy = calculate_scores(predictions, temp_ref_file, temp_pred_file, temp_score_file, scoring_script_path)
@@ -143,7 +153,7 @@ def score_deberta_models(base_path, temp_ref_file, output_results, scoring_scrip
         else:
             print(f"  Predictions file not found: {pred_file}")
 
-def score_llm_models(base_path, temp_ref_file, output_results, scoring_script_path):
+def score_llm_models(base_path, temp_ref_file, output_results, scoring_script_path, target_ids):
     """Score LLM model predictions."""
     print("\n=== Scoring LLM Models ===")
     
@@ -165,8 +175,13 @@ def score_llm_models(base_path, temp_ref_file, output_results, scoring_script_pa
             pred_file = os.path.join(model_path, 'predictions.jsonl')
             
             if os.path.exists(pred_file):
-                print(f"\nScoring {category}/{model_name}...")
-                predictions = load_first_n_predictions(pred_file, n=100)
+                # Clean up model name for plotting
+                display_name = model_name
+                if display_name.endswith("-random-100"):
+                    display_name = display_name[:-11]
+                
+                print(f"\nScoring {category}/{model_name} (as {display_name})...")
+                predictions = load_predictions_for_ids(pred_file, target_ids)
                 
                 if predictions:
                     spearman, accuracy = calculate_scores(predictions, temp_ref_file, temp_pred_file, temp_score_file, scoring_script_path)
@@ -174,7 +189,7 @@ def score_llm_models(base_path, temp_ref_file, output_results, scoring_script_pa
                     if spearman is not None and accuracy is not None:
                         output_results.append({
                             'model_type': 'LLM',
-                            'model_name': model_name,
+                            'model_name': display_name,
                             'category': category,
                             'spearman': spearman,
                             'accuracy': accuracy
@@ -204,14 +219,20 @@ def save_results_to_csv(results, output_dir, output_filename='model_comparison_f
 def main():
     base_path = '/home/niccolo/Torino/LLM-SamEval-T5'
     scoring_script_path = os.path.join(base_path, 'score/scoring.py')
-    ref_file = os.path.join(base_path, 'deberta-finetune-2/ref.jsonl')
+    ref_file = os.path.join(base_path, 'DeBERTa-NLI/ref.jsonl')
     output_dir = os.path.join(base_path, 'results')
+    random_ids_file = os.path.join(base_path, 'data/random_100_ids.json')
     
+    print("Loading target IDs...")
+    with open(random_ids_file, 'r') as f:
+        target_ids = json.load(f)
+    print(f"Loaded {len(target_ids)} random target IDs")
+
     print("Loading reference data...")
     gold_data = load_gold_data(ref_file)
-    # Filter to first 100 items
-    gold_data = filter_first_n_items(gold_data, n=100)
-    print(f"Loaded {len(gold_data)} reference items")
+    # Filter to specific IDs and re-map to 0..n-1
+    gold_data = filter_items_by_id(gold_data, target_ids)
+    print(f"Filtered to {len(gold_data)} reference items")
     
     # Create temporary reference file for the subset
     temp_ref_file = os.path.join(base_path, 'temp_ref.jsonl')
@@ -223,8 +244,8 @@ def main():
         output_results = []
         
         # Score all models
-        score_deberta_models(base_path, temp_ref_file, output_results, scoring_script_path)
-        score_llm_models(base_path, temp_ref_file, output_results, scoring_script_path)
+        score_deberta_models(base_path, temp_ref_file, output_results, scoring_script_path, target_ids)
+        score_llm_models(base_path, temp_ref_file, output_results, scoring_script_path, target_ids)
         
         # Save results to CSV
         save_results_to_csv(output_results, output_dir)

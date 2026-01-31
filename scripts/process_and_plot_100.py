@@ -66,6 +66,10 @@ def process_data(input_file):
     # Convert to DataFrame
     summary_df = pd.DataFrame(list(processed_data.values()))
     
+    # Clean and normalize model names
+    if hasattr(plot_results, 'clean_and_normalize_data'):
+        summary_df = plot_results.clean_and_normalize_data(summary_df)
+    
     # Calculate improvements
     if 'zero_accuracy' in summary_df.columns and 'five_accuracy' in summary_df.columns:
         summary_df['accuracy_impr_pct'] = (summary_df['five_accuracy'] - summary_df['zero_accuracy']) / summary_df['zero_accuracy'] * 100
@@ -107,7 +111,7 @@ def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
     # Plot points and 0->5 arrows
     for idx, row in plot_df.iterrows():
         # Determine point color
-        if any(x in row['model'] for x in ['deberta-finetune', 'deberta-base', 'bert-base', 'smollm']):
+        if any(x in row['model'] for x in ['DeBERTa-NLI', 'deberta-base', 'bert-base', 'smollm']):
             color = c_orange
         elif row['is_enhanced']:
             color = c_enh
@@ -152,10 +156,8 @@ def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
     # Set x-axis limits
     all_scores = pd.concat([plot_df['zero_accuracy'], plot_df['five_accuracy']])
     
-    # Check for DeBERTa to include in limits (Prefer version 2)
-    deberta_row = df[df['model'] == 'deberta-finetune-2']
-    if deberta_row.empty:
-        deberta_row = df[df['model'] == 'deberta-finetune']
+    # Check for DeBERTa to include in limits
+    deberta_row = df[df['model'] == 'DeBERTa-NLI']
         
     if not deberta_row.empty:
          val = deberta_row.iloc[0]['zero_accuracy']
@@ -168,7 +170,7 @@ def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
 
     ax.set_xlabel('Baseline Performance (Zero-shot Accuracy)')
     ax.set_ylabel('Benefit from Few-shot (Accuracy Improvement %)')
-    ax.set_title('Learning Potential (Accuracy): LLM vs Fine-tuned Models')
+    ax.set_title('Few-shot Improvement vs Zero-shot Baseline (Accuracy)')
     ax.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.3) # Zero improvement line
     ax.grid(True, linestyle='--', alpha=0.7)
     
@@ -176,7 +178,7 @@ def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
     if not deberta_row.empty:
         deberta_val = deberta_row.iloc[0]['zero_accuracy']
         deberta_name = deberta_row.iloc[0]['model']
-        label_text = ' Fine-tuned DeBERTa'
+        label_text = ' DeBERTa-NLI'
         
         if pd.notna(deberta_val):
             ax.axvline(deberta_val, color=c_orange, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
@@ -187,7 +189,7 @@ def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', label='LLM Only', markerfacecolor=c_std, markersize=10),
         Line2D([0], [0], marker='o', color='w', label='LLM + DeBERTa', markerfacecolor=c_enh, markersize=10),
-        Line2D([0], [0], marker='o', color='w', label='Fine-tuned Models', markerfacecolor=c_orange, markersize=10),
+        Line2D([0], [0], marker='o', color='w', label='DeBERTa-NLI', markerfacecolor=c_orange, markersize=10),
         Line2D([0], [0], color=c_pos, lw=2, label='Positive Improvement'),
         Line2D([0], [0], color=c_neg, lw=2, label='Negative Improvement'),
         Line2D([0], [0], color='gray', linestyle='--', lw=1.5, label='LLM -> +DeBERTa Shift'),
@@ -204,7 +206,7 @@ def main():
     results_dir = base_path / 'results'
     input_file = results_dir / 'model_comparison_first100.csv'
     output_csv = results_dir / 'summary_first100.csv'
-    output_plots_dir = results_dir / 'plots_first100'
+    output_plots_dir = results_dir / 'plots_100'
     full_summary_file = results_dir / 'summary_0shot_5shot_scores.csv'
     
     if not input_file.exists():

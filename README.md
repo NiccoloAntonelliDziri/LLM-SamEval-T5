@@ -12,8 +12,8 @@ Task website: https://nlu-lab.github.io/semeval.html
 A simple overview of the main files and folders in this repository:
 
 - `data/` — dataset files used for training and evaluation (from https://github.com/Janosch-Gehring/ambistory )
-- `deberta-finetune/` — results of deberta finetuned model
-- `llm-prompting/` — results of LLMs
+- `DeBERTa-NLI/` — results of the fine-tuned DeBERTa model used for enhancing LLM predictions
+- `llm-ollama/` — results of LLM zero-shot and five-shot prompting
 - `score/` — scoring utilities used to evaluate predictions (from https://github.com/Janosch-Gehring/semeval26-05-scripts) 
 - `scripts/` — notebooks for running models and experiments (examples use Ollama and DeBERTa).
 - `requirements.txt` — Python dependencies to install. (in addition to pytorch)
