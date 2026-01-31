@@ -136,7 +136,7 @@ def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
         label = row['model'].replace('-deberta', '')
         if row['is_enhanced']:
             label += '*'
-        ax.text(row['zero_accuracy'], row['accuracy_impr_pct'] + 0.8, label, fontsize=9, ha='center', va='bottom', alpha=0.8)
+        ax.text(row['zero_accuracy'], row['accuracy_impr_pct'] + 0.8, label, fontsize=14, ha='center', va='bottom', alpha=0.8)
 
     # Connect Standard to Enhanced
     # Group by base_name
@@ -183,7 +183,7 @@ def plot_learning_potential_first100(df: pd.DataFrame, output_dir: Path):
         if pd.notna(deberta_val):
             ax.axvline(deberta_val, color=c_orange, linestyle='--', linewidth=2, alpha=0.8, label=label_text.strip())
             ylim = ax.get_ylim()
-            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=9)
+            ax.text(deberta_val, ylim[1] - (ylim[1]-ylim[0])*0.05, label_text, color=c_orange, fontweight='bold', ha='left', va='top', fontsize=14)
     
     # Custom Legend - MOVED TO LEFT for first100 plots
     legend_elements = [
