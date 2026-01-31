@@ -22,4 +22,4 @@ A simple overview of the main files and folders in this repository:
 ## Results
 
 ### Metric Consistency
-![Metric Consistency](results/metric_consistency.png)
+![Metric Consistency](results/plots_unfiltered/metric_consistency.png)
